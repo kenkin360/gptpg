@@ -19,12 +19,13 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
-        with: enablement: true        
+        with:
+          enablement: true
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: . # 根據需要可以指定像 `dist/` 或 `public/`
+          path: . # 或改為 public/ 或 dist/
 
       - name: Deploy to GitHub Pages
         uses: actions/deploy-pages@v4
