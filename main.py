@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory
 import os, base64, requests
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__, static_folder='.')
 
 GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
