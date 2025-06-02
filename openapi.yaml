@@ -1,0 +1,42 @@
+
+openapi: 3.0.1
+info:
+  title: GPTPG Upload API
+  version: '1.0'
+paths:
+  /upload:
+    post:
+      summary: Upload a file to GitHub repo
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                path:
+                  type: string
+                  description: File path in the repo (e.g., "README.md")
+                content:
+                  type: string
+                  description: The content of the file (plain text)
+                message:
+                  type: string
+                  description: Commit message
+              required:
+                - path
+                - content
+                - message
+      responses:
+        '200':
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  commit_url:
+                    type: string
