@@ -1,0 +1,91 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>GPTPG Chat</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #chat {
+            flex: 1;
+            padding: 1em;
+            overflow-y: auto;
+            background: #f5f5f5;
+        }
+        .message {
+            margin-bottom: 1em;
+        }
+        .user {
+            text-align: right;
+            color: #333;
+        }
+        .gpt {
+            text-align: left;
+            color: #0077cc;
+        }
+        #input-area {
+            display: flex;
+            padding: 1em;
+            background: #fff;
+        }
+        #input {
+            flex: 1;
+            padding: 0.5em;
+            font-size: 1em;
+        }
+        #send {
+            padding: 0.5em 1em;
+            font-size: 1em;
+            margin-left: 0.5em;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat"></div>
+    <div id="input-area">
+        <input type="text" id="input" placeholder="Ask me to generate a file..." />
+        <button id="send">Send</button>
+    </div>
+
+    <script>
+        const chat = document.getElementById("chat");
+        const input = document.getElementById("input");
+        const send = document.getElementById("send");
+
+        function appendMessage(role, text) {
+            const div = document.createElement("div");
+            div.className = "message " + role;
+            div.textContent = text;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        send.onclick = async () => {
+            const prompt = input.value.trim();
+            if (!prompt) return;
+            appendMessage("user", prompt);
+            input.value = "";
+
+            const res = await fetch("/chat_api", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt })
+            });
+
+            const data = await res.json();
+            if (data.reply) {
+                appendMessage("gpt", data.reply);
+            } else {
+                appendMessage("gpt", "[Error from server]");
+            }
+        };
+    </script>
+</body>
+</html>
