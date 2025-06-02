@@ -66,7 +66,7 @@ def chat_api():
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4-1106-preview",
+            model="gpt-4-0125-preview", 
             messages=[
                 {"role": "system", "content": "You help generate files to be committed to a GitHub repository."},
                 {"role": "user", "content": user_input}
