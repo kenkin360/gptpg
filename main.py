@@ -54,6 +54,10 @@ def upload():
     return jsonify(result.json()), result.status_code
 
 # === Chat API：對話 + GPT function calling ===
+from openai import OpenAI
+
+client = OpenAI(api_key=OPENAI_API_KEY)
+
 @app.route("/chat_api", methods=["POST"])
 def chat_api():
     user_input = request.json.get("prompt", "")
@@ -61,43 +65,47 @@ def chat_api():
         return jsonify({"error": "No prompt provided"}), 400
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4-1106-preview",
-            api_key=OPENAI_API_KEY,
             messages=[
                 {"role": "system", "content": "You help generate files to be committed to a GitHub repository."},
                 {"role": "user", "content": user_input}
             ],
-            functions=[{
-                "name": "upload_file_to_repo",
-                "description": "Upload a file to a GitHub repo",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string"},
-                        "content": {"type": "string"},
-                        "message": {"type": "string"}
-                    },
-                    "required": ["path", "content", "message"]
+            tools=[{
+                "type": "function",
+                "function": {
+                    "name": "upload_file_to_repo",
+                    "description": "Upload a file to a GitHub repo",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string"},
+                            "content": {"type": "string"},
+                            "message": {"type": "string"}
+                        },
+                        "required": ["path", "content", "message"]
+                    }
                 }
             }],
-            function_call="auto"
+            tool_choice="auto"
         )
 
-        message = response["choices"][0]["message"]
+        message = response.choices[0].message
 
-        if "function_call" in message:
-            args = eval(message["function_call"]["arguments"])
+        if message.tool_calls:
+            tool_call = message.tool_calls[0]
+            args = eval(tool_call.function.arguments)
             upload_res = requests.post(UPLOAD_URL, json=args, headers={"Authorization": f"Bearer {GH_TOKEN}"})
             if upload_res.status_code == 200:
                 return jsonify({"reply": f"✅ `{args['path']}` committed with message `{args['message']}`."})
             else:
                 return jsonify({"reply": f"❌ Upload failed: {upload_res.text}"}), 500
         else:
-            return jsonify({"reply": message.get("content", "[No reply]")})
+            return jsonify({"reply": message.content or "[No reply]"})
 
     except Exception as e:
         return jsonify({"reply": f"❌ Error: {str(e)}"}), 500
+
 
 # === 啟動應用 ===
 if __name__ == "__main__":
