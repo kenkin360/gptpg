@@ -2,23 +2,36 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>ChatGPT Commit Interface</title>
+  <title>ChatGPT Commit 對話介面</title>
 </head>
 <body>
-  <h2>ChatGPT Commit Intercept 測試</h2>
-  <textarea id="reply" rows="10" cols="80" placeholder="貼上含 @@FILE{...}@@ 的回應"></textarea><br/>
-  <button onclick="send()">送出至 /intercept</button>
-  <pre id="result"></pre>
+  <h2>與 ChatGPT 對話，並自動 commit 指令</h2>
+  <div id="chat-box" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll;"></div>
+  <textarea id="input" rows="3" cols="80" placeholder="請輸入訊息..."></textarea><br/>
+  <button onclick="send()">送出</button>
+
   <script>
+    const chatBox = document.getElementById('chat-box');
+    const input = document.getElementById('input');
+    const history = [];
+
+    function append(role, text) {
+      history.push({ role, content: text });
+      chatBox.textContent += `\n${role === 'user' ? '🧑' : '🤖'}: ${text}`;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
     async function send() {
-      const reply = document.getElementById('reply').value;
-      const res = await fetch('/intercept', {
+      const userMsg = input.value;
+      input.value = '';
+      append('user', userMsg);
+      const res = await fetch('/chat_api', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({reply})
+        body: JSON.stringify({ messages: [...history, { role: 'user', content: userMsg }] })
       });
       const json = await res.json();
-      document.getElementById('result').textContent = JSON.stringify(json, null, 2);
+      append('assistant', json.reply);
     }
   </script>
 </body>

@@ -1,21 +1,13 @@
-# gptpg
+# ChatGPT Commit 自動化對話應用
 
-# ChatGPT WebApp Commit Interceptor
+## 使用方式
+1. 開啟 `/chat` 頁面，與 ChatGPT 以自然語言對話。
+2. 若 ChatGPT 的回覆包含：
+   @@FILE{ path: "index.html", content: "<html>...</html>" }@@
+   系統會自動 commit 至指定 GitHub repo。
+3. 你只會看到簡短提示「✅ 檔案已更新，請測試」。
 
-## 使用流程
-
-1. ChatGPT 回覆範例如下：
-   ✅ 檔案已更新
-   @@FILE{ path: "index.html", content: "<!DOCTYPE html><html>...</html>" }@@
-
-2. 將整段回應貼入 Web App 頁面 `/` 提交
-
-3. 伺服器於 /intercept 端點解析後自動 commit 至 GitHub
-
-## 環境變數（於 Railway 設定）
-
-- GH_TOKEN
-- REPO_OWNER（預設 kenkin360）
-- REPO_NAME（預設 gptpg）
-- BRANCH（預設 main）
+## 運作條件
+- 已設定環境變數 GH_TOKEN、REPO_OWNER、REPO_NAME
+- 此系統不依賴 OpenAI API，而是從 ChatGPT Web 回應中擷取
 
