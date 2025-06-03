@@ -27,7 +27,8 @@ def chat_api():
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
             "Referer": "https://chat.openai.com/",
             "Origin": "https://chat.openai.com",
-        }        
+            "Accept": "text/event-stream"
+        }
         payload = {
             "action": "next",
             "messages": [{
@@ -38,8 +39,22 @@ def chat_api():
             "parent_message_id": str(uuid.uuid4())
         }
         response = requests.post("https://chat.openai.com/backend-api/conversation", headers=headers, json=payload)
-        reply_json = response.json()
-        reply_text = json.dumps(reply_json)
+
+        if response.status_code != 200:
+            return jsonify({
+                "error": f"ChatGPT 回應失敗（HTTP {response.status_code}）",
+                "raw": response.text
+            }), 500
+
+        reply_text = response.text
+        try:
+            reply_json = response.json()
+            reply_text = json.dumps(reply_json)
+        except json.JSONDecodeError:
+            return jsonify({
+                "error": "無法解析 ChatGPT 回應為 JSON",
+                "raw": reply_text
+            }), 500
 
         matches = re.findall(r"@@FILE\{(.*?)\}@@", reply_text, re.DOTALL)
         if matches:
