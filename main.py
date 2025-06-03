@@ -1,15 +1,20 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory, send_file
 import os, base64, requests, re
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='.')
 
+# GitHub 環境變數
 GH_TOKEN = os.environ.get("GH_TOKEN")
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
 REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
 BRANCH = os.environ.get("BRANCH", "main")
 
-# 自訂訊息格式 @@FILE{ path: "...", content: "..." }@@
-file_pattern = re.compile(r'@@FILE\{\s*path:\s*"([^"]+)",\s*content:\s*"([^"]+)"\s*\}@@', re.DOTALL)
+# 偵測格式 @@FILE{ path: "index.html", content: "<html>...</html>" }@@
+file_pattern = re.compile(r'@@FILE\{\s*path:\s*"([^"]+)",\s*content:\s*"([^"]+?)"\s*\}@@', re.DOTALL)
+
+@app.route("/chat")
+def index():
+    return send_from_directory(app.static_folder, "chat.html")
 
 @app.route("/intercept", methods=["POST"])
 def intercept():
@@ -22,7 +27,7 @@ def intercept():
 
     path, content = match.group(1), match.group(2)
 
-    result = upload_to_github(path, content, "Automated commit from GPT reply")
+    result = upload_to_github(path, content, "Auto commit via GPT reply")
     if result.ok:
         return jsonify({"status": "success", "path": path})
     else:

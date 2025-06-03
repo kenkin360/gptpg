@@ -1,24 +1,21 @@
 # gptpg
 
-# ChatGPT Commit Interceptor
+# ChatGPT WebApp Commit Interceptor
 
-## 使用方式
+## 使用流程
 
-1. 在 ChatGPT 回覆中包含格式：
-   @@FILE{ path: "index.html", content: "<h1>Hello</h1>" }@@
+1. ChatGPT 回覆範例如下：
+   ✅ 檔案已更新
+   @@FILE{ path: "index.html", content: "<!DOCTYPE html><html>...</html>" }@@
 
-2. 此 webhook 於 /intercept 端點接收 JSON：
-   { "reply": "ChatGPT 的完整回覆含 @@FILE{...}@@" }
+2. 將整段回應貼入 Web App 頁面 `/` 提交
 
-3. 伺服器會擷取內容，自動 commit 到 GitHub
+3. 伺服器於 /intercept 端點解析後自動 commit 至 GitHub
 
-## 必要環境變數
+## 環境變數（於 Railway 設定）
 
-- GH_TOKEN：GitHub Personal Access Token
-- REPO_OWNER：預設 kenkin360
-- REPO_NAME：預設 gptpg
-- BRANCH：預設 main
+- GH_TOKEN
+- REPO_OWNER（預設 kenkin360）
+- REPO_NAME（預設 gptpg）
+- BRANCH（預設 main）
 
-## Railway 部署
-
-部署後將 /intercept 作為目標，用於 ChatGPT 回覆的攔截與上傳。
