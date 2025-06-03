@@ -1,19 +1,17 @@
 
 import os
-import re
 import asyncio
 import nest_asyncio
-from flask import Flask, request, session, Response, redirect, url_for, render_template_string, make_response
+from flask import Flask, request, session, redirect, url_for, render_template_string, make_response
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
-from pyppeteer import launch
+from urllib.parse import urljoin
+from playwright.async_api import async_playwright
 
-nest_asyncio.apply()  # 讓pyppeteer能跑在Flask主線程
+nest_asyncio.apply()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
-USE_PYPPETEER = True   # 若遇動態網站會自動開啟
 
 def get_user_session():
     if 'proxy_session' not in session:
@@ -52,19 +50,14 @@ def rewrite_html(soup, base_url):
         form['action'] = url_for('form_proxy') + '?url=' + target + '&method=' + method
     return soup
 
-async def render_with_pyppeteer(url):
-    browser = await launch(
-        headless=True,
-        args=['--no-sandbox'],
-        handleSIGINT=False,
-        handleSIGTERM=False,
-        handleSIGHUP=False
-    )
-    page = await browser.newPage()
-    await page.goto(url, {'waitUntil': 'networkidle2', 'timeout': 20000})
-    html = await page.content()
-    await browser.close()
-    return html
+async def render_with_playwright(url):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        page = await browser.new_page()
+        await page.goto(url, wait_until="networkidle")
+        content = await page.content()
+        await browser.close()
+        return content
 
 @app.route('/', methods=['GET'])
 def index():
@@ -84,19 +77,11 @@ def browser():
     target_url = request.args.get('url')
     if not target_url:
         return redirect(url_for('index'))
-    s = get_user_session()
     try:
-        resp = s.get(target_url, stream=True, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
-        save_cookies(s)
-        content_type = resp.headers.get('Content-Type', '').lower()
-        html = resp.content
-        if 'text/html' not in content_type:
-            return redirect(url_for('resource_proxy') + '?url=' + target_url)
-        if USE_PYPPETEER and (b'<script' in html or b'window.location' in html):
-            html = asyncio.get_event_loop().run_until_complete(render_with_pyppeteer(target_url)).encode('utf-8')
+        html = asyncio.get_event_loop().run_until_complete(render_with_playwright(target_url))
         soup = BeautifulSoup(html, 'html.parser')
         soup = rewrite_html(soup, target_url)
-        page = render_template_string("""
+        return render_template_string("""
             <form action="/browse" method="get">
                 <input name="url" value="{{url}}" style="width:60vw">
                 <button type="submit">Go</button>
@@ -105,7 +90,6 @@ def browser():
                 {{content|safe}}
             </div>
         """, url=target_url, content=str(soup))
-        return page
     except Exception as e:
         return f'Error: {e}'
 
@@ -114,10 +98,8 @@ def resource_proxy():
     url = request.args.get('url')
     if not url:
         return 'Missing url', 400
-    s = get_user_session()
     try:
-        resp = s.get(url, stream=True, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
-        save_cookies(s)
+        resp = requests.get(url, stream=True, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
         headers = {}
         for key, value in resp.headers.items():
             if key.lower() in ['content-encoding','content-length','transfer-encoding','connection']:
@@ -133,33 +115,8 @@ def resource_proxy():
 
 @app.route('/form', methods=['POST', 'GET'])
 def form_proxy():
-    target_url = request.args.get('url')
-    method = request.args.get('method','get').lower()
-    s = get_user_session()
-    try:
-        if method == 'post':
-            resp = s.post(target_url, data=request.form, files=request.files, headers={'User-Agent': 'Mozilla/5.0'})
-        else:
-            resp = s.get(target_url, params=request.args, headers={'User-Agent': 'Mozilla/5.0'})
-        save_cookies(s)
-        content_type = resp.headers.get('Content-Type', '').lower()
-        if 'text/html' not in content_type:
-            return redirect(url_for('resource_proxy') + '?url=' + target_url)
-        html = resp.content
-        soup = BeautifulSoup(html, 'html.parser')
-        soup = rewrite_html(soup, target_url)
-        return render_template_string("""
-            <form action="/browse" method="get">
-                <input name="url" value="{{url}}" style="width:60vw">
-                <button type="submit">Go</button>
-            </form>
-            <div style="border:1px solid #888;min-height:80vh;padding:1em;margin-top:8px;">
-                {{content|safe}}
-            </div>
-        """, url=target_url, content=str(soup))
-    except Exception as e:
-        return f'Error in form submission: {e}'
+    return redirect(url_for('browser') + '?url=' + request.args.get('url'))
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
+    port = int(os.environ.get('PORT', 5000))
     app.run(host="0.0.0.0", port=port)
