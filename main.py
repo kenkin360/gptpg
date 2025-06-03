@@ -1,80 +1,74 @@
-#!/usr/bin/env python3
-import json
-import time
-from datetime import datetime
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
+import requests, os, base64, json, re, uuid
 
-import httpx
-from fastapi import FastAPI, Request, HTTPException
-from starlette.background import BackgroundTask
+app = Flask(__name__, static_folder=".", template_folder=".")
 
-from log import OpenAILog, save_log
-from utils import PathMatchingTree, OverrideStreamResponse
+GH_TOKEN = os.environ.get("GH_TOKEN")
+CHATGPT_SESSION_TOKEN = os.environ.get("CHATGPT_SESSION_TOKEN")
+REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
+REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
+BRANCH = os.environ.get("BRANCH", "main")
 
-proxied_hosts = PathMatchingTree({
-    "/": "https://api.openai.com",
-    "/backend-api/conversation": "https://chat.openai.com",
-})
+@app.route("/")
+def index():
+    return send_from_directory(app.static_folder, "index.html")    
 
-# FastAPI app
-app = FastAPI()
+@app.route("/chat")
+def serve_chat():
+    return render_template("chat.html")
 
+@app.route("/chat_api", methods=["POST"])
+def chat_api():
+    try:
+        user_input = request.json.get("prompt", "")
+        headers = {
+            "Authorization": f"Bearer {CHATGPT_SESSION_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "action": "next",
+            "messages": [{
+                "role": "user",
+                "content": {"content_type": "text", "parts": [user_input]}
+            }],
+            "model": "text-davinci-002-render-sha",
+            "parent_message_id": str(uuid.uuid4())
+        }
+        response = requests.post("https://chat.openai.com/backend-api/conversation", headers=headers, json=payload)
+        reply_json = response.json()
+        reply_text = json.dumps(reply_json)
 
-async def proxy_openai_api(request: Request):
-    # proxy request to OpenAI API
-    headers = {k: v for k, v in request.headers.items() if
-               k not in {'host', 'content-length', 'x-forwarded-for', 'x-real-ip', 'connection'}}
-    url = f'{proxied_hosts.get_matching(request.url.path)}{request.url.path}'
+        matches = re.findall(r"@@FILE\{(.*?)\}@@", reply_text, re.DOTALL)
+        if matches:
+            for m in matches:
+                file_data = json.loads("{" + m + "}")
+                upload_to_github(file_data["path"], file_data["content"], file_data["message"])
+            return jsonify({"reply": "✅ 檔案已更新並上傳至 GitHub。"})
 
-    start_time = datetime.now().microsecond
-    # create httpx async client
-    client = httpx.AsyncClient()
+        return jsonify({"reply": reply_text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    request_body = await request.json() if request.method in {'POST', 'PUT'} else None
+def upload_to_github(filename, content, message):
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{filename}"
+    headers = {
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
 
-    log = OpenAILog()
+    res = requests.get(url, headers=headers)
+    sha = res.json().get("sha") if res.status_code == 200 else None
 
-    async def stream_api_response():
-        nonlocal log
-        try:
-            st = client.stream(request.method, url, headers=headers, params=request.query_params, json=request_body)
-            async with st as res:
-                response.status_code = res.status_code
-                response.init_headers({k: v for k, v in res.headers.items() if
-                                       k not in {'content-length', 'content-encoding', 'alt-svc'}})
+    encoded = base64.b64encode(content.encode()).decode("utf-8")
+    payload = {
+        "message": message,
+        "content": encoded,
+        "branch": BRANCH
+    }
+    if sha:
+        payload["sha"] = sha
 
-                content = bytearray()
-                async for chunk in res.aiter_bytes():
-                    yield chunk
-                    content.extend(chunk)
+    requests.put(url, headers=headers, json=payload)
 
-                # gather log data
-                log.request_url = url
-                log.request_method = request.method
-                log.request_time = start_time
-                log.response_time = time.time() - start_time
-                log.status_code = res.status_code
-                log.request_content = (await request.body()).decode('utf-8') if request.method == 'POST' else None
-                log.response_content = content.decode('utf-8')
-                log.response_header = json.dumps([[k, v] for k, v in res.headers.items()])
-
-        except httpx.RequestError as exc:
-            raise HTTPException(status_code=500, detail=f'An error occurred while requesting: {exc}')
-
-    async def update_log():
-        nonlocal log
-        log.response_time = datetime.now().microsecond - start_time
-        await save_log(log)
-
-    response = OverrideStreamResponse(stream_api_response(), background=BackgroundTask(update_log))
-    return response
-
-
-@app.route('/{path:path}', methods=['GET', 'POST', 'PUT', 'DELETE'])
-async def request_handler(request: Request):
-    return await proxy_openai_api(request)
-
-
-if __name__ == '__main__':
-    import uvicorn
-
-    uvicorn.run("main:app", host="127.0.0.1", port=8080, log_level="info", reload=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)

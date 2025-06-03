@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ChatGPT Proxy</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; }
+    #log { white-space: pre-wrap; border: 1px solid #ccc; padding: 1em; height: 300px; overflow-y: scroll; }
+  </style>
+</head>
+<body>
+  <h1>ChatGPT Proxy 對話介面</h1>
+  <textarea id="prompt" rows="4" cols="80" placeholder="輸入訊息..."></textarea><br>
+  <button onclick="sendPrompt()">送出</button>
+  <div id="log"></div>
+  <script>
+    async function sendPrompt() {
+      const prompt = document.getElementById("prompt").value;
+      const log = document.getElementById("log");
+      const res = await fetch("/chat_api", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          prompt: prompt
+        })
+      });
+      const result = await res.json();
+      log.textContent += "\n> " + prompt + "\n" + JSON.stringify(result.reply || result) + "\n";
+      document.getElementById("prompt").value = "";
+    }
+  </script>
+</body>
+</html>
