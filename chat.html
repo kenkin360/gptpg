@@ -1,37 +1,34 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>ChatGPT Commit 對話介面</title>
+  <meta charset="UTF-8">
+  <title>ChatGPT Proxy</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; }
+    #log { white-space: pre-wrap; border: 1px solid #ccc; padding: 1em; height: 300px; overflow-y: scroll; }
+  </style>
 </head>
 <body>
-  <h2>與 ChatGPT 對話，並自動 commit 指令</h2>
-  <div id="chat-box" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; height: 300px; overflow-y: scroll;"></div>
-  <textarea id="input" rows="3" cols="80" placeholder="請輸入訊息..."></textarea><br/>
-  <button onclick="send()">送出</button>
-
+  <h1>ChatGPT Proxy 對話介面</h1>
+  <textarea id="prompt" rows="4" cols="80" placeholder="輸入訊息..."></textarea><br>
+  <button onclick="sendPrompt()">送出</button>
+  <div id="log"></div>
   <script>
-    const chatBox = document.getElementById('chat-box');
-    const input = document.getElementById('input');
-    const history = [];
-
-    function append(role, text) {
-      history.push({ role, content: text });
-      chatBox.textContent += `\n${role === 'user' ? '🧑' : '🤖'}: ${text}`;
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    async function send() {
-      const userMsg = input.value;
-      input.value = '';
-      append('user', userMsg);
-      const res = await fetch('/chat_api', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ messages: [...history, { role: 'user', content: userMsg }] })
+    async function sendPrompt() {
+      const prompt = document.getElementById("prompt").value;
+      const log = document.getElementById("log");
+      const res = await fetch("/chat_api", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          prompt: prompt
+        })
       });
-      const json = await res.json();
-      append('assistant', json.reply);
+      const result = await res.json();
+      log.textContent += "\n> " + prompt + "\n" + JSON.stringify(result.reply || result) + "\n";
+      document.getElementById("prompt").value = "";
     }
   </script>
 </body>

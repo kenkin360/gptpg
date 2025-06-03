@@ -1,73 +1,67 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
-import requests, re, os, base64
+from flask import Flask, request, jsonify, send_from_directory, render_template
+import requests, os, base64, json, re
 
-app = Flask(__name__, static_folder='public', template_folder='.')
+app = Flask(__name__, static_folder='static', template_folder='.')
 
 GH_TOKEN = os.environ.get("GH_TOKEN")
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
 REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
 BRANCH = os.environ.get("BRANCH", "main")
-UPLOAD_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/"
 
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    return send_from_directory("static", "index.html")
 
 @app.route("/chat")
 def serve_chat():
-    return render_template("proxy_chat.html")
+    return render_template("chat.html")
 
 @app.route("/chat_api", methods=["POST"])
 def chat_api():
-    user_prompt = request.json.get("prompt", "")
     try:
+        payload = request.get_json()
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {GH_TOKEN}"
+            "Authorization": request.headers.get("Authorization", "")
         }
+        response = requests.post("https://chat.openai.com/backend-api/conversation", headers=headers, json=payload)
+        reply = response.json()
 
-        # 向 ChatGPT 發送使用者輸入 (需手動在 browser 端觸發)
-        # 此處僅為無 API key 下的模擬架構
-        content = f"{user_prompt}\n@@FILE{{ path: 'index.html', content: '<html><body>{user_prompt}</body></html>' }}@@"
+        # 攔截格式 @@FILE{...}@@
+        matches = re.findall(r"@@FILE\{(.*?)\}@@", json.dumps(reply), re.DOTALL)
+        if matches:
+            for m in matches:
+                file_data = json.loads("{" + m + "}")
+                filename = file_data["path"]
+                content = file_data["content"]
+                commit_msg = file_data["message"]
+                upload_to_github(filename, content, commit_msg)
+            return jsonify({"reply": "✅ 檔案已更新並上傳至 GitHub。"})
 
-        match = re.search(r"@@FILE\{(.+?)\}@@", content, re.DOTALL)
-        if match:
-            args_text = match.group(1)
-            args = eval(f"dict({args_text})")
-            path = args["path"]
-            file_content = args["content"]
-            commit_msg = args.get("message", f"Auto commit {path}")
-
-            encoded = base64.b64encode(file_content.encode()).decode()
-            file_url = f"{UPLOAD_URL}{path}"
-            get_res = requests.get(file_url, headers={
-                "Authorization": f"Bearer {GH_TOKEN}",
-                "Accept": "application/vnd.github.v3+json"
-            })
-
-            sha = get_res.json().get("sha") if get_res.status_code == 200 else None
-            payload = {
-                "message": commit_msg,
-                "content": encoded,
-                "branch": BRANCH
-            }
-            if sha:
-                payload["sha"] = sha
-
-            put_res = requests.put(file_url, headers={
-                "Authorization": f"Bearer {GH_TOKEN}",
-                "Accept": "application/vnd.github.v3+json"
-            }, json=payload)
-
-            if put_res.status_code in [200, 201]:
-                return jsonify({ "reply": f"✅ `{path}` 已更新，請至 repo 測試結果。" })
-            else:
-                return jsonify({ "reply": f"❌ GitHub 更新失敗: {put_res.text}" })
-
-        return jsonify({ "reply": content })
-
+        return jsonify(reply)
     except Exception as e:
-        return jsonify({ "reply": f"❌ 錯誤: {str(e)}" })
+        return jsonify({"error": str(e)}), 500
+
+def upload_to_github(filename, content, message):
+    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{filename}"
+    headers = {
+        "Authorization": f"Bearer {GH_TOKEN}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+
+    res = requests.get(url, headers=headers)
+    sha = res.json().get("sha") if res.status_code == 200 else None
+
+    encoded = base64.b64encode(content.encode()).decode("utf-8")
+    payload = {
+        "message": message,
+        "content": encoded,
+        "branch": BRANCH
+    }
+    if sha:
+        payload["sha"] = sha
+
+    requests.put(url, headers=headers, json=payload)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
