@@ -5,6 +5,7 @@ app = Flask(__name__, static_folder=".", template_folder=".")
 
 GH_TOKEN = os.environ.get("GH_TOKEN")
 CHATGPT_SESSION_TOKEN = os.environ.get("CHATGPT_SESSION_TOKEN")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
 REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
 BRANCH = os.environ.get("BRANCH", "main")
@@ -22,7 +23,7 @@ def chat_api():
     try:
         user_input = request.json.get("prompt", "")
         headers = {
-            "Authorization": f"Bearer {CHATGPT_SESSION_TOKEN}",
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
             "Referer": "https://chat.openai.com/",
@@ -44,7 +45,7 @@ def chat_api():
             return jsonify({
                 "error": f"ChatGPT 回應失敗（HTTP {response.status_code}）",
                 "raw": response.text
-            }), 500
+            }), response.status_code
 
         reply_text = response.text
         try:
@@ -54,7 +55,7 @@ def chat_api():
             return jsonify({
                 "error": "無法解析 ChatGPT 回應為 JSON",
                 "raw": reply_text
-            }), 500
+            }), response.status_code
 
         matches = re.findall(r"@@FILE\{(.*?)\}@@", reply_text, re.DOTALL)
         if matches:
