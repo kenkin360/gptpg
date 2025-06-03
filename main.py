@@ -1,93 +1,167 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory, send_file
-import requests, os, base64, json, re, uuid
+import os
+import re
+import asyncio
+import nest_asyncio
+from flask import Flask, request, session, Response, redirect, url_for, render_template_string, make_response
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+from pyppeteer import launch
 
-app = Flask(__name__, static_folder=".", template_folder=".")
+nest_asyncio.apply()  # 讓pyppeteer能跑在Flask主線程
 
-GH_TOKEN = os.environ.get("GH_TOKEN")
-CHATGPT_SESSION_TOKEN = os.environ.get("CHATGPT_SESSION_TOKEN")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
-REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
-BRANCH = os.environ.get("BRANCH", "main")
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(24)
+USE_PYPPETEER = True   # 若遇動態網站會自動開啟
 
-@app.route("/")
+def get_user_session():
+    if 'proxy_session' not in session:
+        session['proxy_session'] = {}
+    if 'cookies' not in session['proxy_session']:
+        session['proxy_session']['cookies'] = {}
+    s = requests.Session()
+    s.cookies.update(session['proxy_session']['cookies'])
+    return s
+
+def save_cookies(s):
+    session['proxy_session']['cookies'] = s.cookies.get_dict()
+
+def rewrite_html(soup, base_url):
+    for tag, attr in [('img','src'),('script','src'),('link','href'),('video','src'),('audio','src'),('source','src'),('iframe','src')]:
+        for t in soup.find_all(tag):
+            if t.has_attr(attr):
+                orig = t[attr]
+                if orig.startswith('data:'):
+                    continue
+                t[attr] = url_for('resource_proxy') + '?url=' + urljoin(base_url, orig)
+    for a in soup.find_all('a'):
+        if a.has_attr('href'):
+            href = a['href']
+            if href.startswith('mailto:') or href.startswith('javascript:') or href.startswith('#'):
+                continue
+            link = urljoin(base_url, href)
+            a['href'] = url_for('browser') + '?url=' + link
+    for form in soup.find_all('form'):
+        action = form.get('action')
+        if action:
+            target = urljoin(base_url, action)
+        else:
+            target = base_url
+        method = form.get('method', 'get').lower()
+        form['action'] = url_for('form_proxy') + '?url=' + target + '&method=' + method
+    return soup
+
+async def render_with_pyppeteer(url):
+    browser = await launch(headless=True, args=['--no-sandbox'])
+    page = await browser.newPage()
+    await page.goto(url, {'waitUntil': 'networkidle2', 'timeout': 20000})
+    html = await page.content()
+    await browser.close()
+    return html
+
+@app.route('/', methods=['GET'])
 def index():
-    return send_from_directory(app.static_folder, "index.html")    
+    url = request.args.get('url', 'https://www.example.com')
+    return render_template_string('''
+        <form action="/browse" method="get">
+            <input name="url" value="{{url}}" style="width:60vw">
+            <button type="submit">Go</button>
+        </form>
+        <div style="border:1px solid #888;min-height:80vh;padding:1em;margin-top:8px;">
+            請輸入網址
+        </div>
+    ''', url=url)
 
-@app.route("/chat")
-def serve_chat():
-    return render_template("chat.html")
-
-@app.route("/chat_api", methods=["POST"])
-def chat_api():
+@app.route('/browse', methods=['GET'])
+def browser():
+    target_url = request.args.get('url')
+    if not target_url:
+        return redirect(url_for('index'))
+    s = get_user_session()
     try:
-        user_input = request.json.get("prompt", "")
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
-            "Referer": "https://chat.openai.com/",
-            "Origin": "https://chat.openai.com",
-            "Accept": "text/event-stream"
-        }
-        payload = {
-            "action": "next",
-            "messages": [{
-                "role": "user",
-                "content": {"content_type": "text", "parts": [user_input]}
-            }],
-            "model": "text-davinci-002-render-sha",
-            "parent_message_id": str(uuid.uuid4())
-        }
-        response = requests.post("https://chat.openai.com/backend-api/conversation", headers=headers, json=payload)
-
-        if response.status_code != 200:
-            return jsonify({
-                "error": f"ChatGPT 回應失敗（HTTP {response.status_code}）",
-                "raw": response.text
-            }), response.status_code
-
-        reply_text = response.text
+        # 先用requests測試是不是靜態頁
+        resp = s.get(target_url, stream=True, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+        save_cookies(s)
+        content_type = resp.headers.get('Content-Type', '').lower()
+        html = resp.content
+        # 只要不是text/html，直接當資源下載
+        if 'text/html' not in content_type:
+            return redirect(url_for('resource_proxy') + '?url=' + target_url)
+        # 判斷有沒有javascript重導/動態內容（太簡單，真需求可再強化）
+        if USE_PYPPETEER and (b'<script' in html or b'window.location' in html):
+            html = asyncio.get_event_loop().run_until_complete(render_with_pyppeteer(target_url)).encode('utf-8')
         try:
-            reply_json = response.json()
-            reply_text = json.dumps(reply_json)
-        except json.JSONDecodeError:
-            return jsonify({
-                "error": "無法解析 ChatGPT 回應為 JSON",
-                "raw": reply_text
-            }), response.status_code
-
-        matches = re.findall(r"@@FILE\{(.*?)\}@@", reply_text, re.DOTALL)
-        if matches:
-            for m in matches:
-                file_data = json.loads("{" + m + "}")
-                upload_to_github(file_data["path"], file_data["content"], file_data["message"])
-            return jsonify({"reply": "✅ 檔案已更新並上傳至 GitHub。"})
-
-        return jsonify({"reply": reply_text})
+            soup = BeautifulSoup(html, 'html.parser')
+        except Exception:
+            soup = BeautifulSoup(html, 'lxml')
+        soup = rewrite_html(soup, target_url)
+        page = render_template_string('''
+            <form action="/browse" method="get">
+                <input name="url" value="{{url}}" style="width:60vw">
+                <button type="submit">Go</button>
+            </form>
+            <div style="border:1px solid #888;min-height:80vh;padding:1em;margin-top:8px;">
+                {{content|safe}}
+            </div>
+        ''', url=target_url, content=str(soup))
+        return page
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return f'Error: {e}'
 
-def upload_to_github(filename, content, message):
-    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{filename}"
-    headers = {
-        "Authorization": f"Bearer {GH_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
+@app.route('/resource')
+def resource_proxy():
+    url = request.args.get('url')
+    if not url:
+        return 'Missing url', 400
+    s = get_user_session()
+    try:
+        resp = s.get(url, stream=True, timeout=20, headers={'User-Agent': 'Mozilla/5.0'})
+        save_cookies(s)
+        headers = {}
+        for key, value in resp.headers.items():
+            if key.lower() in ['content-encoding','content-length','transfer-encoding','connection']:
+                continue
+            headers[key] = value
+        data = resp.content
+        response = make_response(data)
+        for key, value in headers.items():
+            response.headers[key] = value
+        return response
+    except Exception as e:
+        return f'Error loading resource: {e}', 502
 
-    res = requests.get(url, headers=headers)
-    sha = res.json().get("sha") if res.status_code == 200 else None
+@app.route('/form', methods=['POST', 'GET'])
+def form_proxy():
+    target_url = request.args.get('url')
+    method = request.args.get('method','get').lower()
+    s = get_user_session()
+    try:
+        if method == 'post':
+            resp = s.post(target_url, data=request.form, files=request.files, headers={'User-Agent': 'Mozilla/5.0'})
+        else:
+            resp = s.get(target_url, params=request.args, headers={'User-Agent': 'Mozilla/5.0'})
+        save_cookies(s)
+        content_type = resp.headers.get('Content-Type', '').lower()
+        if 'text/html' not in content_type:
+            return redirect(url_for('resource_proxy') + '?url=' + target_url)
+        html = resp.content
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+        except Exception:
+            soup = BeautifulSoup(html, 'lxml')
+        soup = rewrite_html(soup, target_url)
+        return render_template_string('''
+            <form action="/browse" method="get">
+                <input name="url" value="{{url}}" style="width:60vw">
+                <button type="submit">Go</button>
+            </form>
+            <div style="border:1px solid #888;min-height:80vh;padding:1em;margin-top:8px;">
+                {{content|safe}}
+            </div>
+        ''', url=target_url, content=str(soup))
+    except Exception as e:
+        return f'Error in form submission: {e}'
 
-    encoded = base64.b64encode(content.encode()).decode("utf-8")
-    payload = {
-        "message": message,
-        "content": encoded,
-        "branch": BRANCH
-    }
-    if sha:
-        payload["sha"] = sha
-
-    requests.put(url, headers=headers, json=payload)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host="0.0.0.0", port=port)
