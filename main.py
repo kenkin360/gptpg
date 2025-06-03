@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory
 import requests, re, os, base64
 
-app = Flask(__name__, static_folder='public', template_folder='templates')
+app = Flask(__name__, static_folder='public', template_folder='.')
 
 GH_TOKEN = os.environ.get("GH_TOKEN")
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
