@@ -1,7 +1,2 @@
 flask
-<<<<<<< HEAD
 requests
-openai>=1.0.0
-=======
-requests
->>>>>>> 02ebc84 ( Changes to be committed:)
