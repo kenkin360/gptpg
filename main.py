@@ -23,8 +23,11 @@ def chat_api():
         user_input = request.json.get("prompt", "")
         headers = {
             "Authorization": f"Bearer {CHATGPT_SESSION_TOKEN}",
-            "Content-Type": "application/json"
-        }
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36",
+            "Referer": "https://chat.openai.com/",
+            "Origin": "https://chat.openai.com",
+        }        
         payload = {
             "action": "next",
             "messages": [{
