@@ -1,0 +1,25 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Chat Commit UI</title>
+</head>
+<body>
+    <h2>貼上 ChatGPT 回應內容（需含 ```commit JSON）</h2>
+    <textarea id="chat" rows="20" cols="100"></textarea><br>
+    <button onclick="send()">送出</button>
+    <pre id="resp"></pre>
+    <script>
+        function send() {
+            fetch("/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: document.getElementById("chat").value })
+            }).then(r => r.json()).then(d => {
+                document.getElementById("resp").textContent = JSON.stringify(d, null, 2);
+            });
+        }
+    </script>
+</body>
+</html>
