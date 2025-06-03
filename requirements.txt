@@ -1,2 +1,6 @@
 flask
 requests
+<<<<<<< HEAD
+=======
+openai>=1.0.0
+>>>>>>> parent of 12dc0ac ( Changes to be committed:)
