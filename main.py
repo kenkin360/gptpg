@@ -10,11 +10,11 @@ BRANCH = os.environ.get("BRANCH", "main")
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "/index.html")
+    return send_from_directory(".", "index.html")
 
 @app.route("/chat")
 def serve_chat():
-    return render_template("/chat.html")
+    return render_template("chat.html")
 
 @app.route("/chat_api", methods=["POST"])
 def chat_api():
@@ -24,11 +24,15 @@ def chat_api():
             "Content-Type": "application/json",
             "Authorization": request.headers.get("Authorization", "")
         }
-        response = requests.post("https://chat.openai.com/backend-api/conversation", headers=headers, json=payload)
-        reply = response.json()
 
-        # 攔截格式 @@FILE{...}@@
-        matches = re.findall(r"@@FILE\{(.*?)\}@@", json.dumps(reply), re.DOTALL)
+        response = requests.post("https://chat.openai.com/backend-api/conversation", headers=headers, json=payload)
+
+        try:
+            reply = response.json()
+        except Exception:
+            return jsonify({"error": "非 JSON 回應", "raw": response.text}), 500
+
+        matches = re.findall(r"@@FILE\\{(.*?)\\}@@", json.dumps(reply), re.DOTALL)
         if matches:
             for m in matches:
                 file_data = json.loads("{" + m + "}")
@@ -41,6 +45,7 @@ def chat_api():
         return jsonify(reply)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 def upload_to_github(filename, content, message):
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{filename}"
