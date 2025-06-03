@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory, render_template
 import requests, os, base64, json, re
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=".", template_folder=".")
 
 GH_TOKEN = os.environ.get("GH_TOKEN")
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
@@ -45,7 +45,6 @@ def chat_api():
         return jsonify(reply)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 def upload_to_github(filename, content, message):
     url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{filename}"
