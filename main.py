@@ -1,6 +1,6 @@
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
-import os, base64, requests, threading, time, re
+from flask import Flask, request, jsonify, send_file
+import os, base64, requests, re
 
 app = Flask(__name__, static_folder=".")
 
@@ -8,7 +8,6 @@ GH_TOKEN = os.environ.get("GH_TOKEN")
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
 REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
 BRANCH = os.environ.get("BRANCH", "main")
-CHAT_FILE = "chat_latest.txt"
 
 def upload_to_github(path, content, message):
     encoded = base64.b64encode(content.encode()).decode("utf-8")
@@ -46,30 +45,19 @@ def chat_ui():
 def chat_post():
     data = request.json
     content = data.get("content", "")
-    with open(CHAT_FILE, "w", encoding="utf-8") as f:
-        f.write(content)
-    return jsonify({"status": "received"})
-
-def background_commit_checker():
-    while True:
-        if os.path.exists(CHAT_FILE):
-            with open(CHAT_FILE, encoding="utf-8") as f:
-                text = f.read()
-            match = re.search(r"```commit\s*(\{.*?\})\s*```", text, re.DOTALL)
-            if match:
-                try:
-                    data = eval(match.group(1))
-                    res = upload_to_github(data["filename"], data["content"], data["message"])
-                    if res.ok:
-                        print(f"✅ {data['filename']} committed.")
-                        os.remove(CHAT_FILE)
-                    else:
-                        print("❌ Commit failed:", res.text)
-                except Exception as e:
-                    print("❌ Error during commit:", e)
-        time.sleep(10)
-
-threading.Thread(target=background_commit_checker, daemon=True).start()
+    match = re.search(r"```commit\s*(\{.*?\})\s*```", content, re.DOTALL)
+    if match:
+        try:
+            args = eval(match.group(1))
+            res = upload_to_github(args["filename"], args["content"], args["message"])
+            if res.ok:
+                return jsonify({"status": "committed", "path": args["filename"]})
+            else:
+                return jsonify({"error": "GitHub API failed", "details": res.text}), 500
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "No valid commit block found"}), 400
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
