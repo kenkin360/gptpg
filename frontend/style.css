@@ -1,0 +1,6 @@
+body { margin: 0; font-family: sans-serif; }
+.browser { display: flex; flex-direction: column; height: 100vh; }
+.toolbar { padding: 0.5em; background: #333; color: white; display: flex; }
+.url-input { flex: 1; padding: 0.3em; }
+.content { flex: 1; overflow: auto; padding: 1em; background: white; }
+.console { background: #eee; font-size: 0.8em; padding: 0.5em; height: 10em; overflow: auto; }
