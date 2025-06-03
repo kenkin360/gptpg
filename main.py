@@ -1,3 +1,4 @@
+
 import os
 import re
 import asyncio
@@ -52,7 +53,13 @@ def rewrite_html(soup, base_url):
     return soup
 
 async def render_with_pyppeteer(url):
-    browser = await launch(headless=True, args=['--no-sandbox'])
+    browser = await launch(
+        headless=True,
+        args=['--no-sandbox'],
+        handleSIGINT=False,
+        handleSIGTERM=False,
+        handleSIGHUP=False
+    )
     page = await browser.newPage()
     await page.goto(url, {'waitUntil': 'networkidle2', 'timeout': 20000})
     html = await page.content()
@@ -62,7 +69,7 @@ async def render_with_pyppeteer(url):
 @app.route('/', methods=['GET'])
 def index():
     url = request.args.get('url', 'https://www.example.com')
-    return render_template_string('''
+    return render_template_string("""
         <form action="/browse" method="get">
             <input name="url" value="{{url}}" style="width:60vw">
             <button type="submit">Go</button>
@@ -70,7 +77,7 @@ def index():
         <div style="border:1px solid #888;min-height:80vh;padding:1em;margin-top:8px;">
             請輸入網址
         </div>
-    ''', url=url)
+    """, url=url)
 
 @app.route('/browse', methods=['GET'])
 def browser():
@@ -79,23 +86,17 @@ def browser():
         return redirect(url_for('index'))
     s = get_user_session()
     try:
-        # 先用requests測試是不是靜態頁
         resp = s.get(target_url, stream=True, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
         save_cookies(s)
         content_type = resp.headers.get('Content-Type', '').lower()
         html = resp.content
-        # 只要不是text/html，直接當資源下載
         if 'text/html' not in content_type:
             return redirect(url_for('resource_proxy') + '?url=' + target_url)
-        # 判斷有沒有javascript重導/動態內容（太簡單，真需求可再強化）
         if USE_PYPPETEER and (b'<script' in html or b'window.location' in html):
             html = asyncio.get_event_loop().run_until_complete(render_with_pyppeteer(target_url)).encode('utf-8')
-        try:
-            soup = BeautifulSoup(html, 'html.parser')
-        except Exception:
-            soup = BeautifulSoup(html, 'lxml')
+        soup = BeautifulSoup(html, 'html.parser')
         soup = rewrite_html(soup, target_url)
-        page = render_template_string('''
+        page = render_template_string("""
             <form action="/browse" method="get">
                 <input name="url" value="{{url}}" style="width:60vw">
                 <button type="submit">Go</button>
@@ -103,7 +104,7 @@ def browser():
             <div style="border:1px solid #888;min-height:80vh;padding:1em;margin-top:8px;">
                 {{content|safe}}
             </div>
-        ''', url=target_url, content=str(soup))
+        """, url=target_url, content=str(soup))
         return page
     except Exception as e:
         return f'Error: {e}'
@@ -145,12 +146,9 @@ def form_proxy():
         if 'text/html' not in content_type:
             return redirect(url_for('resource_proxy') + '?url=' + target_url)
         html = resp.content
-        try:
-            soup = BeautifulSoup(html, 'html.parser')
-        except Exception:
-            soup = BeautifulSoup(html, 'lxml')
+        soup = BeautifulSoup(html, 'html.parser')
         soup = rewrite_html(soup, target_url)
-        return render_template_string('''
+        return render_template_string("""
             <form action="/browse" method="get">
                 <input name="url" value="{{url}}" style="width:60vw">
                 <button type="submit">Go</button>
@@ -158,7 +156,7 @@ def form_proxy():
             <div style="border:1px solid #888;min-height:80vh;padding:1em;margin-top:8px;">
                 {{content|safe}}
             </div>
-        ''', url=target_url, content=str(soup))
+        """, url=target_url, content=str(soup))
     except Exception as e:
         return f'Error in form submission: {e}'
 
