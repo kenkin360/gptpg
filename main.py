@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, send_from_directory, render_template
 import requests, os, base64, json, re
 
-app = Flask(__name__, static_folder='static', template_folder='.')
+app = Flask(__name__)
 
 GH_TOKEN = os.environ.get("GH_TOKEN")
 REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
@@ -10,11 +10,11 @@ BRANCH = os.environ.get("BRANCH", "main")
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    return send_from_directory(".", "/index.html")
 
 @app.route("/chat")
 def serve_chat():
-    return render_template("chat.html")
+    return render_template("/chat.html")
 
 @app.route("/chat_api", methods=["POST"])
 def chat_api():
