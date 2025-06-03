@@ -1,1 +1,11 @@
-<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8" /><title>莫比烏絲跑道場景</title><style>body { margin: 0; overflow: hidden; } canvas { display: block; }</style></head><body><script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script><script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/geometries/ParametricGeometry.js"></script><script>Function.prototype.extend = function (properties) { var parent = this; var child = function () { return parent.apply(this, arguments); }; child.prototype = Object.create(parent.prototype); for (var key in properties) { if (properties.hasOwnProperty(key)) { child.prototype[key] = properties[key]; } } return child; }; var Scene = function () { this.init(); }; Scene.prototype = { init: function () { this.scene = new THREE.Scene(); this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000); this.camera.position.z = 5; this.renderer = new THREE.WebGLRenderer({ antialias: true }); this.renderer.setSize(window.innerWidth, window.innerHeight); document.body.appendChild(this.renderer.domElement); const light = new THREE.DirectionalLight(0xffffff, 1); light.position.set(5, 10, 7.5); this.scene.add(light); this.animate(); }, animate: function () { requestAnimationFrame(this.animate.bind(this)); this.renderer.render(this.scene, this.camera); } }; var MobiusScene = Scene.extend({ init: function () { Scene.prototype.init.call(this); this.addMobius(); }, addMobius: function () { const mobiusFunc = function (u, t, target) { u *= Math.PI * 2; t *= Math.PI * 2; const major = 2.25, a = 0.125; const x = Math.cos(u) * (major + a * Math.cos(t)); const y = Math.sin(u) * (major + a * Math.cos(t)); const z = a * Math.sin(t); target.set(x, y, z); }; const geometry = new THREE.ParametricGeometry(mobiusFunc, 100, 16); const material = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }); const mesh = new THREE.Mesh(geometry, material); this.scene.add(mesh); } }); new MobiusScene();</script></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Auto Commit Listener</title>
+</head>
+<body>
+  <h2>Auto Commit App 正在運行</h2>
+  <p>ChatGPT 對話內容將寫入 <code>chat_latest.txt</code>，後端自動偵測並推送 commit。</p>
+</body>
+</html>

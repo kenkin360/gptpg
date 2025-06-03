@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 from flask import Flask, request, jsonify, send_from_directory, send_file
 import os, base64, requests, openai
 
@@ -10,12 +11,26 @@ REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
 REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
 BRANCH = "main"
 UPLOAD_URL = "https://gptpg-production.up.railway.app/upload"
+=======
+from flask import Flask, request, jsonify, send_file
+import os, base64, requests, threading, time, json
+
+app = Flask(__name__, static_folder='.')
+
+GH_TOKEN = os.environ.get("GH_TOKEN")
+REPO_OWNER = os.environ.get("REPO_OWNER", "kenkin360")
+REPO_NAME = os.environ.get("REPO_NAME", "gptpg")
+BRANCH = os.environ.get("BRANCH", "main")
+
+CHAT_LOG = "chat_latest.txt"
+>>>>>>> 02ebc84 ( Changes to be committed:)
 
 # === 首頁 ===
 @app.route("/")
 def index():
-    return send_from_directory(app.static_folder, "index.html")
+    return send_file("index.html")
 
+<<<<<<< HEAD
 # === GPT 專用 chat 頁面 ===
 @app.route("/chat")
 def serve_chat():
@@ -28,14 +43,23 @@ def upload():
     filename = data["path"] if "path" in data else data["filename"]
     content = data["content"]
     message = data.get("message", f"Upload {filename} via webhook")
+=======
+@app.route("/chat", methods=["POST"])
+def chat():
+    data = request.json
+    content = data.get("content", "")
+    with open(CHAT_LOG, "w", encoding="utf-8") as f:
+        f.write(content)
+    return jsonify({"status": "saved"})
+>>>>>>> 02ebc84 ( Changes to be committed:)
 
-    encoded = base64.b64encode(content.encode()).decode("utf-8")
-    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{filename}"
-    headers = {
-        "Authorization": f"Bearer {GH_TOKEN}",
-        "Accept": "application/vnd.github.v3+json"
-    }
+def check_for_commit():
+    while True:
+        if os.path.exists(CHAT_LOG):
+            with open(CHAT_LOG, "r", encoding="utf-8") as f:
+                content = f.read()
 
+<<<<<<< HEAD
     # 取得原本 sha（若有）
     sha = None
     res = requests.get(url, headers=headers)
@@ -49,9 +73,46 @@ def upload():
     }
     if sha:
         payload["sha"] = sha
+=======
+            if "```commit" in content:
+                try:
+                    payload_block = content.split("```commit")[1].split("```")[0]
+                    payload = json.loads(payload_block.strip())
 
-    result = requests.put(url, headers=headers, json=payload)
-    return jsonify(result.json()), result.status_code
+                    filename = payload["filename"]
+                    file_content = payload["content"]
+                    commit_message = payload["message"]
+
+                    encoded = base64.b64encode(file_content.encode()).decode("utf-8")
+                    url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{filename}"
+                    headers = {
+                        "Authorization": f"Bearer {GH_TOKEN}",
+                        "Accept": "application/vnd.github.v3+json"
+                    }
+>>>>>>> 02ebc84 ( Changes to be committed:)
+
+                    sha = None
+                    res = requests.get(url, headers=headers)
+                    if res.status_code == 200:
+                        sha = res.json().get("sha")
+
+                    commit_payload = {
+                        "message": commit_message,
+                        "content": encoded,
+                        "branch": BRANCH
+                    }
+                    if sha:
+                        commit_payload["sha"] = sha
+
+                    res = requests.put(url, headers=headers, json=commit_payload)
+                    print("✅ Committed:", res.status_code, res.json())
+                    os.remove(CHAT_LOG)
+
+                except Exception as e:
+                    print("❌ Commit error:", str(e))
+        time.sleep(10)
+
+threading.Thread(target=check_for_commit, daemon=True).start()
 
 # === Chat API：對話 + GPT function calling ===
 from openai import OpenAI
