@@ -14,7 +14,7 @@ const App = {
       })
       const data = await res.json()
       html.value = data.html
-      consoleLog.value = data.console.join("\\n")
+      consoleLog.value = data.console.join("\n")
     }
 
     return { url, html, consoleLog, load }
