@@ -1,6 +1,6 @@
 import os
 import asyncio
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from playwright.async_api import async_playwright
 import nest_asyncio
@@ -24,7 +24,6 @@ async def render():
         page = await context.new_page()
 
         console_logs = []
-
         page.on("console", lambda msg: console_logs.append(f"[{msg.type}] {msg.text}"))
 
         try:
