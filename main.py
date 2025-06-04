@@ -12,12 +12,16 @@ app.secret_key = os.environ.get('SECRET_KEY', 'secret')
 CORS(app, supports_credentials=True)
 
 @app.route("/api/render", methods=["POST"])
-async def render():
+def render():
     data = request.get_json()
     url = data.get("url")
     if not url:
         return jsonify({"error": "Missing URL"}), 400
 
+    result = asyncio.run(handle_render(url))
+    return jsonify(result)
+
+async def handle_render(url):
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True, args=["--no-sandbox"])
         context = await browser.new_context()
@@ -34,7 +38,7 @@ async def render():
         finally:
             await browser.close()
 
-    return jsonify({ "html": html, "console": console_logs })
+    return { "html": html, "console": console_logs }
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
