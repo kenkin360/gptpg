@@ -1,6 +1,6 @@
 import os
 import asyncio
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from playwright.async_api import async_playwright
 import nest_asyncio
@@ -8,8 +8,15 @@ import nest_asyncio
 nest_asyncio.apply()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'secret')
 CORS(app, supports_credentials=True)
+
+@app.route("/browser")
+def index():
+    return send_from_directory("frontend", "index.html")
+
+@app.route("/<path:path>")
+def static_proxy(path):
+    return send_from_directory("frontend", path)
 
 @app.route("/api/render", methods=["POST"])
 def render():
